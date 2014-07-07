@@ -1,0 +1,11 @@
+SLObjectCreationTest.
+  testEngineCreation
+  testOutputMixCreation
+  testAudioPlayerFromUriCreation
+  testAudioPlayerFromFdCreation
+  testAudioPlayerFromPcmBqCreation
+  testAudioPlayerFromTsAbqCreation
+  testAudioPlayerFromUriToPcmBqCreation
+  testAudioPlayerFromFdToPcmBqCreation
+  testAudioPlayerFromAdtsAbqToPcmBqCreation
+  testAudioRecorderCreation

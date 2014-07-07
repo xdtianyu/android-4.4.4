@@ -1,0 +1,9 @@
+*~
+*.bak
+*.class
+bin/
+*.properties
+*.cproject
+*.settings
+*.pyc
+

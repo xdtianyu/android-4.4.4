@@ -1,0 +1,12 @@
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+-keepclassmembers class com.android.cts.verifier.os.FileUtils$FileStatus {
+    private <fields>;
+}
+
+-keepclasseswithmembers class * extends com.android.cts.verifier.location.LocationModeTestActivity
+
+-dontwarn android.hardware.Sensor
+-dontwarn java.util.concurrent.ConcurrentLinkedDeque

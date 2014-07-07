@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2013 The Chromium Authors. All rights reserved.
+
+     Use of this source code is governed by a BSD-style license that can be
+     found in the LICENSE file.
+-->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/webviewchromium_bubble">
+
+    <LinearLayout
+        android:id="@+id/webviewchromium_validation_bubble_top_view"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignStart="@+id/webviewchromium_validation_bubble_icon_view"
+        android:layout_alignEnd="@+id/webviewchromium_validation_bubble_text_wrapper"
+        android:weightSum="1">
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="0.25"
+            android:visibility="invisible"/>
+
+        <ImageView
+            android:id="@+id/webviewchromium_validation_bubble_arrow_image"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_marginBottom="7dp"
+            android:src="@drawable/webviewchromium_bubble_arrow_up" />
+
+    </LinearLayout>
+
+    <ImageView
+        android:id="@id/webviewchromium_validation_bubble_icon_view"
+        android:layout_width="19dp"
+        android:layout_height="19dp"
+        android:layout_alignParentStart="true"
+        android:layout_below="@id/webviewchromium_validation_bubble_top_view"
+        android:layout_marginEnd="8dp"
+        android:src="@drawable/webviewchromium_pageinfo_warning_major" />
+
+    <LinearLayout
+        android:id="@id/webviewchromium_validation_bubble_text_wrapper"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/webviewchromium_validation_bubble_top_view"
+        android:layout_toEndOf="@id/webviewchromium_validation_bubble_icon_view"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/webviewchromium_validation_bubble_main_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="300dp"
+            android:textColor="@android:color/black"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/webviewchromium_validation_bubble_sub_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="300dp"
+            android:textColor="#444"
+            android:textSize="13sp" />
+
+    </LinearLayout>
+
+</RelativeLayout>
