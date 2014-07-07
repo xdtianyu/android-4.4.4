@@ -1,0 +1,24 @@
+{{#callback}}
+<p>
+  {{?optional}}
+      If you specify the <em>{{name}}</em> parameter, it should
+      specify a function that looks like this:
+  {{:optional}}
+      The <em>{{name}}</em> parameter should specify a function
+      that looks like this:
+  {{/optional}}
+</p>
+<pre>function({{#p:parameters}}{{+partials.variable_type type:p/}} {{p.name}}{{^p.last}}, {{/}}{{/}}) <span class="subdued">{...}</span>;</pre>
+{{?description}}
+<p>
+  {{{description}}}
+</p>
+{{/description}}
+{{?parameters}}
+<dl>
+  {{#p:parameters}}
+    {{+partials.parameter_full parameter:p parentName:name hideParamTOC:true /}}
+  {{/parameters}}
+</dl>
+{{/parameters}}
+{{/callback}}

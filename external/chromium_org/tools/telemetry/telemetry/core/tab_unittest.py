@@ -1,0 +1,95 @@
+# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import logging
+
+from telemetry.core import util
+from telemetry.core import exceptions
+from telemetry.unittest import tab_test_case
+
+
+def _IsDocumentVisible(tab):
+  hidden = tab.EvaluateJavaScript('document.hidden || document.webkitHidden')
+  # TODO(dtu): Remove when crbug.com/166243 is fixed.
+  tab.Disconnect()
+  return not hidden
+
+
+class TabTest(tab_test_case.TabTestCase):
+  def testNavigateAndWaitToForCompleteState(self):
+    self._browser.SetHTTPServerDirectories(util.GetUnittestDataDir())
+    self._tab.Navigate(self._browser.http_server.UrlOf('blank.html'))
+    self._tab.WaitForDocumentReadyStateToBeComplete()
+
+  def testNavigateAndWaitToForInteractiveState(self):
+    self._browser.SetHTTPServerDirectories(util.GetUnittestDataDir())
+    self._tab.Navigate(self._browser.http_server.UrlOf('blank.html'))
+    self._tab.WaitForDocumentReadyStateToBeInteractiveOrBetter()
+
+  def testTabBrowserIsRightBrowser(self):
+    self.assertEquals(self._tab.browser, self._browser)
+
+  def testRendererCrash(self):
+    self.assertRaises(exceptions.TabCrashException,
+                      lambda: self._tab.Navigate('chrome://crash',
+                                                 timeout=5))
+
+  def testActivateTab(self):
+    if not self._browser.supports_tab_control:
+      logging.warning('Browser does not support tab control, skipping test.')
+      return
+
+    self.assertTrue(_IsDocumentVisible(self._tab))
+    new_tab = self._browser.tabs.New()
+    new_tab.Navigate('about:blank')
+    util.WaitFor(lambda: _IsDocumentVisible(new_tab), timeout=5)
+    self.assertFalse(_IsDocumentVisible(self._tab))
+    self._tab.Activate()
+    util.WaitFor(lambda: _IsDocumentVisible(self._tab), timeout=5)
+    self.assertFalse(_IsDocumentVisible(new_tab))
+
+
+class GpuTabTest(tab_test_case.TabTestCase):
+  def setUp(self):
+    self._extra_browser_args = ['--enable-gpu-benchmarking']
+    super(GpuTabTest, self).setUp()
+
+  def testScreenshot(self):
+    if not self._tab.screenshot_supported:
+      logging.warning('Browser does not support screenshots, skipping test.')
+      return
+
+    self._browser.SetHTTPServerDirectories(util.GetUnittestDataDir())
+    self._tab.Navigate(
+      self._browser.http_server.UrlOf('green_rect.html'))
+    self._tab.WaitForDocumentReadyStateToBeComplete()
+    pixel_ratio = self._tab.EvaluateJavaScript('window.devicePixelRatio || 1')
+
+    screenshot = self._tab.Screenshot(5)
+    assert screenshot
+    screenshot.GetPixelColor(0 * pixel_ratio, 0 * pixel_ratio).AssertIsRGB(
+        0, 255, 0, tolerance=2)
+    screenshot.GetPixelColor(31 * pixel_ratio, 31 * pixel_ratio).AssertIsRGB(
+        0, 255, 0, tolerance=2)
+    screenshot.GetPixelColor(32 * pixel_ratio, 32 * pixel_ratio).AssertIsRGB(
+        255, 255, 255, tolerance=2)
+
+  def testScreenshotSync(self):
+    if not self._tab.screenshot_supported:
+      logging.warning('Browser does not support screenshots, skipping test.')
+      return
+
+    self._browser.SetHTTPServerDirectories(util.GetUnittestDataDir())
+    self._tab.Navigate(
+      self._browser.http_server.UrlOf('screenshot_sync.html'))
+    self._tab.WaitForDocumentReadyStateToBeComplete()
+
+    def IsTestComplete():
+      return self._tab.EvaluateJavaScript('window.__testComplete')
+    util.WaitFor(IsTestComplete, 120)
+
+    message = self._tab.EvaluateJavaScript('window.__testMessage')
+    if message:
+      logging.error(message)
+    assert self._tab.EvaluateJavaScript('window.__testSuccess')

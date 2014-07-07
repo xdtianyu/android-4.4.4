@@ -1,0 +1,8 @@
+include_rules = [
+  "+chrome",
+  "+chromeos",
+  "+content/public/browser",
+  "+content/public/common",
+  "+content/public/test",
+  "+content/test/net",
+]

@@ -1,0 +1,8 @@
+include_rules = [
+  "+base",
+  "+net",
+  "+skia/ext",
+  "+third_party/angle",
+  "+third_party/skia",
+  "+ui/test/ui_unittests_resource.h",  # TODO(beng): remove
+]

@@ -1,0 +1,18 @@
+Name: Accessibility Audit library, from Accessibility Developer Tools
+Short Name: accessibility-audit
+URL: https://github.com/GoogleChrome/accessibility-developer-tools/
+Version: 0
+Revision: 3c23a70bf1ef21e494d7ba0ef5622354473f13d0
+License: Apache 2.0
+License File: LICENSE
+Security Critical: no
+
+Description:
+Library of accessibility-related testing and utility code.
+
+This version has been built from the revision linked in the comment at the top
+of the axs_testing.js file (the revision information is added automatically by
+the build process). See README.md in original project for build instructions.
+
+Local Modifications:
+No modifications.

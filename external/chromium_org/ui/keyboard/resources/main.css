@@ -1,0 +1,67 @@
+/*
+ Copyright (c) 2013 The Chromium Authors. All rights reserved.
+ Use of this source code is governed by a BSD-style license that can be
+ found in the LICENSE file.
+*/
+
+body {
+  -webkit-box-pack: center;
+  -webkit-user-select: none;
+  background-color: #0b0b0b;
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+kb-keyboard {
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  max-width: 1280px;
+  width: 1280px;
+}
+
+kb-keyboard.ctrl-active kb-modifier-key[char=Ctrl],
+kb-keyboard.alt-active kb-modifier-key[char=Alt] {
+  color: lightblue;
+}
+
+/**
+* Controls whether the shift key should be highlighted or not.
+* Only highlights if we are in the upper keyset, but not capslocked.
+*/
+kb-keyboard:not(.caps-locked)[keyset=upper] kb-shift-key {
+  color: lightblue;
+}
+
+*.dark {
+  background-color: #2a2a2c;
+  border-top: 2px solid #3a3a3c;
+  font-size: 70%;
+  margin-left: 0.35em;
+}
+
+
+.caps-locked kb-shift-key,
+.active {
+  background-color: #848490 !important;
+  border-top: 2px solid #A9A9AF !important;
+  /* Do not use box shadow until performance improves
+   * http://code.google.com/p/chromium/issues/detail?id=99045
+  box-shadow: 0px 0px 15px #fff;
+  */
+}
+
+/**
+ * The microphone key is handled separately from other images since the image
+ * displayed changes depending on whether it's pressed or not.
+ */
+.microphone {
+  background-image: url('images/microphone.svg');
+  background-position: 4%;
+  background-size: 25% !important;
+}
+
+.audio .microphone {
+  background-image: url('images/microphone-green.svg');
+}

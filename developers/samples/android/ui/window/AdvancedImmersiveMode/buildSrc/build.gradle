@@ -1,0 +1,8 @@
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile 'org.freemarker:freemarker:2.3.20'
+    compile files("libs/buildSrc.jar")
+}

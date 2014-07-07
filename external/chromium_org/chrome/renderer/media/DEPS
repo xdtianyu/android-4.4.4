@@ -1,0 +1,4 @@
+include_rules = [
+  "+media/base",  # For basic media functions.
+  "+media/cast",  # For cast streaming library.  
+]

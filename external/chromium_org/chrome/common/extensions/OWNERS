@@ -1,0 +1,20 @@
+# Extension and apps team owners. Use file history to guide reviewer selection
+# as this list is randomized. If editing, see chrome/browser/extensions/OWNERS
+scheib@chromium.org
+jyasskin@chromium.org
+benwells@chromium.org
+finnur@chromium.org
+kalman@chromium.org
+miket@chromium.org
+yoz@chromium.org
+mek@chromium.org
+koz@chromium.org
+asargent@chromium.org
+
+# For security review of IPC message files.
+per-file *_messages*.h=set noparent
+per-file *_messages*.h=cdn@chromium.org
+per-file *_messages*.h=cevans@chromium.org
+per-file *_messages*.h=inferno@chromium.org
+per-file *_messages*.h=jschuh@chromium.org
+per-file *_messages*.h=tsepez@chromium.org

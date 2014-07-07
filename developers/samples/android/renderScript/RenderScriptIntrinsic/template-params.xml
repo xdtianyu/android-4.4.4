@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ Copyright 2013 The Android Open Source Project
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
+
+
+<sample>
+    <name>RenderScriptIntrinsic</name>
+    <group>RenderScript</group>
+    <package>com.example.android.renderscriptintrinsic</package>
+
+    <!-- change minSdk if needed-->
+    <minSdk>8</minSdk>
+
+    <dependency_external>'renderscript-v8.jar'</dependency_external>
+
+    <defaultConfig>
+        renderscriptTargetApi 18
+        renderscriptSupportMode true
+    </defaultConfig>
+
+    <strings>
+        <intro>
+            <![CDATA[
+            RenderScriptIntrinsic sample that demonstrates how to use RenderScript intrinsics.
+            Creates several RenderScript intrinsics and shows a filtering result with various parameters.
+            Also shows how to extends RedioButton with StateListDrawable.
+            ]]>
+        </intro>
+    </strings>
+
+    <template src="base"/>
+    <common src="logger"/>
+
+</sample>

@@ -1,0 +1,30 @@
+{{#property}}
+<div>
+  <h3 id="{{id}}">{{name}}</h3>
+  <div class="summary">
+    <div class="line">{{api.namespace}}.{{name}}</div>
+  </div>
+  <div>
+    <dt><span class="property">{{name}}</span> {{+partials.type_name link:link type:property/}}</dt>
+    {{?description}}<dd>
+      {{{description}}}
+    </dd>{{/description}}
+    {{?properties}}
+    <h4 id="{{name}}-properties" title="">
+      Properties of <a href="#property-{{name}}">{{name}}</a>
+    </h4>
+    <dd><dl>{{#p:properties}}
+      {{+partials.parameter_full parameter:p parentName:false/}}
+    {{/properties}}</dl></dd>
+    {{/properties}}
+    {{?functions}}
+    <h4 id="{{name}}-functions" title="">
+      Methods of <a href="#property-{{name}}">{{name}}</a>
+    </h4>
+    <dd><dl>{{#f:functions}}
+      {{+partials.function function:f parentName:false/}}
+    {{/}}</dl></dd>
+    {{/functions}}
+  </div>
+</div>
+{{/property}}

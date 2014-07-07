@@ -1,0 +1,9 @@
+include_rules = [
+  "+skia/ext",
+  "+third_party/skia",
+  "+ui/aura",
+  "+ui/base",
+  "+ui/compositor",
+  "+ui/gfx",
+  "+ui/gl",
+]

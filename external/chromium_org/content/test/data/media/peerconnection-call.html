@@ -1,0 +1,751 @@
+<html>
+<head>
+  <script type="text/javascript" src="webrtc_test_utilities.js"></script>
+  <script type="text/javascript" src="webrtc_test_audio.js"></script>
+  <script type="text/javascript">
+  $ = function(id) {
+    return document.getElementById(id);
+  };
+
+  var gFirstConnection = null;
+  var gSecondConnection = null;
+  var gTestWithoutMsid = false;
+  var gLocalStream = null;
+  var gSentTones = '';
+
+  var gRemoteStreams = {};
+
+  // Default transform functions, overridden by some test cases.
+  var transformSdp = function(sdp) { return sdp; };
+  var transformRemoteSdp = function(sdp) { return sdp; };
+  var transformCandidate = function(candidate) { return candidate; };
+  var onLocalDescriptionError = function(error) { };
+
+  // When using external SDES, the crypto key is chosen by javascript.
+  var EXTERNAL_SDES_LINES = {
+    'audio': 'a=crypto:1 AES_CM_128_HMAC_SHA1_80 ' +
+        'inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR',
+    'video': 'a=crypto:1 AES_CM_128_HMAC_SHA1_80 ' +
+        'inline:d0RmdmcmVCspeEc3QGZiNWpVLFJhQX1cfHAwJSoj',
+    'data': 'a=crypto:1 AES_CM_128_HMAC_SHA1_80 ' +
+        'inline:NzB4d1BINUAvLEw6UzF3WSJ+PSdFcGdUJShpX1Zj'
+  };
+
+  // When using GICE, the ICE credentials can be chosen by javascript.
+  var EXTERNAL_GICE_UFRAG = '1234567890123456';
+  var EXTERNAL_GICE_PWD = '123456789012345678901234';
+
+  setAllEventsOccuredHandler(function() {
+    document.title = 'OK';
+  });
+
+  // Test that we can setup call with an audio and video track.
+  function call(constraints) {
+    createConnections(null);
+    navigator.webkitGetUserMedia(constraints,
+      addStreamToBothConnectionsAndNegotiate, printGetUserMediaError);
+    waitForVideo('remote-view-1');
+    waitForVideo('remote-view-2');
+  }
+
+  // First calls without streams on any connections, and then adds a stream
+  // to peer connection 1 which gets sent to peer connection 2. We must wait
+  // for the first negotiation to complete before starting the second one, which
+  // is why we wait until the connection is stable before re-negotiating.
+  function callEmptyThenAddOneStreamAndRenegotiate(constraints) {
+    createConnections(null);
+    negotiate();
+    waitForConnectionToStabilize(gFirstConnection);
+    navigator.webkitGetUserMedia(constraints,
+      addStreamToTheFirstConnectionAndNegotiate, printGetUserMediaError);
+    // Only the first connection is sending here.
+    waitForVideo('remote-view-2');
+  }
+
+  // First makes a call between pc1 and pc2, and then makes a call between pc3
+  // and pc4 where the remote streams from pc1 and pc2 will be used as the local
+  // streams of pc3 and pc4.
+  function callAndForwardRemoteStream(constraints) {
+    createConnections(null);
+    navigator.webkitGetUserMedia(constraints,
+                                 addStreamToBothConnectionsAndNegotiate,
+                                 printGetUserMediaError);
+    var gotRemoteStream1 = false;
+    var gotRemoteStream2 = false;
+
+    var onRemoteStream1 = function() {
+      gotRemoteStream1 = true;
+      maybeCallEstablished();
+    }
+
+    var onRemoteStream2 = function() {
+      gotRemoteStream2 = true;
+      maybeCallEstablished();
+    }
+
+    var maybeCallEstablished = function() {
+      if (gotRemoteStream1 && gotRemoteStream2) {
+        onCallEstablished();
+      }
+    }
+
+    var onCallEstablished = function() {
+      thirdConnection = createConnection(null, 'remote-view-3');
+      thirdConnection.addStream(gRemoteStreams['remote-view-1']);
+
+      fourthConnection = createConnection(null, 'remote-view-4');
+      fourthConnection.addStream(gRemoteStreams['remote-view-2']);
+
+      negotiateBetween(thirdConnection, fourthConnection);
+
+      waitForVideo('remote-view-3');
+      waitForVideo('remote-view-4');
+    }
+
+    // Do the forwarding after we have received video.
+    detectVideoPlaying('remote-view-1', onRemoteStream1);
+    detectVideoPlaying('remote-view-2', onRemoteStream2);
+  }
+
+  // Test that we can setup call with an audio and video track and
+  // simulate that the remote peer don't support MSID.
+  function callWithoutMsidAndBundle() {
+    createConnections(null);
+    transformSdp = removeBundle;
+    transformRemoteSdp = removeMsid;
+    gTestWithoutMsid = true;
+    navigator.webkitGetUserMedia({audio: true, video: true},
+        addStreamToBothConnectionsAndNegotiate, printGetUserMediaError);
+    waitForVideo('remote-view-1');
+    waitForVideo('remote-view-2');
+  }
+
+  // Test that we can't setup a call with an unsupported video codec
+  function negotiateUnsupportedVideoCodec() {
+    createConnections(null);
+    transformSdp = removeVideoCodec;
+    navigator.webkitGetUserMedia({audio: true, video: true},
+        addStreamToBothConnectionsAndNegotiate, printGetUserMediaError);
+    onLocalDescriptionError = function(error) {
+      var expectedMsg = 'SetLocalDescription failed: Failed to' +
+          ' update session state: ERROR_CONTENT';
+      expectEquals(expectedMsg, error);
+
+      // Got the right message, test succeeded.
+      document.title = 'OK';
+    };
+  }
+
+  // Test that we can't setup a call if one peer does not support encryption
+  function negotiateNonCryptoCall() {
+    createConnections(null);
+    transformSdp = removeCrypto;
+    navigator.webkitGetUserMedia({audio: true, video: true},
+        addStreamToBothConnectionsAndNegotiate, printGetUserMediaError);
+    onLocalDescriptionError = function(error) {
+      var expectedMsg = 'SetLocalDescription failed: Called with a SDP without'
+                         + ' crypto enabled.';
+      expectEquals(expectedMsg, error);
+
+      // Got the right message, test succeeded.
+      document.title = 'OK';
+    };
+  }
+
+  // Test that we can setup call with legacy settings.
+  function callWithLegacySdp() {
+    transformSdp = function(sdp) {
+      return removeBundle(useGice(useExternalSdes(sdp)));
+    };
+    transformCandidate = addGiceCredsToCandidate;
+    createConnections({
+      'mandatory': {'RtpDataChannels': true, 'DtlsSrtpKeyAgreement': false}
+    });
+    setupDataChannel({reliable: false});
+    navigator.webkitGetUserMedia({audio: true, video: true},
+        addStreamToBothConnectionsAndNegotiate, printGetUserMediaError);
+    waitForVideo('remote-view-1');
+    waitForVideo('remote-view-2');
+  }
+
+  // Test only a data channel.
+  function callWithDataOnly() {
+    createConnections({optional:[{RtpDataChannels: true}]});
+    setupDataChannel({reliable: false});
+    negotiate();
+  }
+
+  function callWithSctpDataOnly() {
+    createConnections({optional: [{DtlsSrtpKeyAgreement: true}]});
+    setupSctpDataChannel({reliable: true});
+    negotiate();
+  }
+
+  // Test call with audio, video and a data channel.
+  function callWithDataAndMedia() {
+    createConnections({optional:[{RtpDataChannels: true}]});
+    setupDataChannel({reliable: false});
+    navigator.webkitGetUserMedia({audio: true, video: true},
+      addStreamToBothConnectionsAndNegotiate,
+      printGetUserMediaError);
+    waitForVideo('remote-view-1');
+    waitForVideo('remote-view-2');
+  }
+
+  function callWithSctpDataAndMedia() {
+    createConnections({optional: [{DtlsSrtpKeyAgreement: true}]});
+    setupSctpDataChannel({reliable: true});
+    navigator.webkitGetUserMedia({audio: true, video: true},
+      addStreamToBothConnectionsAndNegotiate,
+      printGetUserMediaError);
+    waitForVideo('remote-view-1');
+    waitForVideo('remote-view-2');
+  }
+
+
+  // Test call with a data channel and later add audio and video.
+  function callWithDataAndLaterAddMedia() {
+    createConnections({optional:[{RtpDataChannels: true}]});
+    setupDataChannel({reliable: false});
+    negotiate();
+
+    // Set an event handler for when the data channel has been closed.
+    setAllEventsOccuredHandler(function() {
+      // When the video is flowing the test is done.
+      setAllEventsOccuredHandler(function() {
+        document.title = 'OK';
+      });
+      navigator.webkitGetUserMedia({audio: true, video: true},
+        addStreamToBothConnectionsAndNegotiate, printGetUserMediaError);
+      waitForVideo('remote-view-1');
+      waitForVideo('remote-view-2');
+    });
+  }
+
+  // Test that we can setup call and send DTMF.
+  function callAndSendDtmf(tones) {
+    createConnections(null);
+    navigator.webkitGetUserMedia({audio: true, video: true},
+      addStreamToBothConnectionsAndNegotiate, printGetUserMediaError);
+    var onCallEstablished = function() {
+      // Send DTMF tones.
+      var localAudioTrack = gLocalStream.getAudioTracks()[0];
+      var dtmfSender = gFirstConnection.createDTMFSender(localAudioTrack);
+      dtmfSender.ontonechange = onToneChange;
+      dtmfSender.insertDTMF(tones);
+      // Wait for the DTMF tones callback.
+      document.title = 'Waiting for dtmf...';
+      addExpectedEvent();
+      var waitDtmf = setInterval(function() {
+        if (gSentTones == tones) {
+          clearInterval(waitDtmf);
+          eventOccured();
+        }
+      }, 100);
+    }
+
+    // Do the DTMF test after we have received video.
+    detectVideoPlaying('remote-view-2', onCallEstablished);
+  }
+
+  //TODO(phoglund): do this for all tests on android if this works on bots.
+  /** @private */
+  function forceIsac16k_(sdp) {
+    // Remove all other codecs (not the video codecs though).
+    sdp = sdp.replace(/m=audio (\d+) RTP\/SAVPF.*\r\n/g,
+                      'm=audio $1 RTP/SAVPF 103\r\n');
+    sdp = sdp.replace('a=fmtp:111 minptime=10', 'a=fmtp:103 minptime=10');
+    sdp = sdp.replace(/a=rtpmap:(?!103)\d{1,3} (?!VP8|red|ulpfec).*\r\n/g, '');
+    return sdp;
+  }
+
+  function callAndEnsureAudioIsPlaying(force_isac_16k) {
+    if (force_isac_16k)
+      transformSdp = forceIsac16k_;
+    createConnections(null);
+    navigator.webkitGetUserMedia({audio: true, video: true},
+      addStreamToBothConnectionsAndNegotiate, printGetUserMediaError);
+
+    // Wait until we have gathered samples and can conclude if audio is playing.
+    addExpectedEvent();
+    var onCallEstablished = function() {
+      gatherAudioLevelSamples(gSecondConnection, 300, 100,
+                              function(samples) {
+        verifyAudioIsPlaying(samples);
+        eventOccured();
+      });
+    };
+
+    detectVideoPlaying('remote-view-2', onCallEstablished);
+  }
+
+  function callAndEnsureAudioMutingWorks() {
+    callAndEnsureAudioIsPlaying();
+    setAllEventsOccuredHandler(function() {
+      var audioTrack =
+        gSecondConnection.getRemoteStreams()[0].getAudioTracks()[0];
+
+      // Call is up, now mute the track and check everything goes silent (give
+      // it a small delay though, we don't expect it to happen instantly).
+      audioTrack.enabled = false;
+
+      setTimeout(function() {
+        gatherAudioLevelSamples(gSecondConnection, 200, 100, function(samples) {
+          verifyIsSilent(samples);
+          document.title = 'OK';
+        });
+      }, 500);
+    });
+  }
+
+  // Test call with a new Video MediaStream that has been created based on a
+  // stream generated by getUserMedia.
+  function callWithNewVideoMediaStream() {
+    createConnections(null);
+    navigator.webkitGetUserMedia({audio: true, video: true},
+        createNewVideoStreamAndAddToBothConnections, printGetUserMediaError);
+    waitForVideo('remote-view-1');
+    waitForVideo('remote-view-2');
+  }
+
+  // Test call with a new Video MediaStream that has been created based on a
+  // stream generated by getUserMedia. When Video is flowing, an audio track
+  // is added to the sent stream and the video track is removed. This
+  // is to test that adding and removing of remote tracks on an existing
+  // mediastream works.
+  function callWithNewVideoMediaStreamLaterSwitchToAudio() {
+    createConnections(null);
+    navigator.webkitGetUserMedia({audio: true, video: true},
+        createNewVideoStreamAndAddToBothConnections, printGetUserMediaError);
+
+    waitForVideo('remote-view-1');
+    waitForVideo('remote-view-2');
+
+    // Set an event handler for when video is playing.
+    setAllEventsOccuredHandler(function() {
+      // Add an audio track to the local stream and remove the video track and
+      // then renegotiate. But first - setup the expectations.
+      local_stream = gFirstConnection.getLocalStreams()[0];
+
+      remote_stream_1 = gFirstConnection.getRemoteStreams()[0];
+      // Add an expected event that onaddtrack will be called on the remote
+      // mediastream received on gFirstConnection when the audio track is
+      // received.
+      addExpectedEvent();
+      remote_stream_1.onaddtrack = function(){
+        expectEquals(remote_stream_1.getAudioTracks()[0].id,
+                     local_stream.getAudioTracks()[0].id);
+        eventOccured();
+      }
+
+      // Add an expectation that the received video track is removed from
+      // gFirstConnection.
+      addExpectedEvent();
+      remote_stream_1.onremovetrack = function() {
+        eventOccured();
+      }
+
+      // Add an expected event that onaddtrack will be called on the remote
+      // mediastream received on gSecondConnection when the audio track is
+      // received.
+      remote_stream_2 = gSecondConnection.getRemoteStreams()[0];
+      addExpectedEvent();
+      remote_stream_2.onaddtrack = function() {
+        expectEquals(remote_stream_2.getAudioTracks()[0].id,
+                     local_stream.getAudioTracks()[0].id);
+        eventOccured();
+      }
+
+      // Add an expectation that the received video track is removed from
+      // gSecondConnection.
+      addExpectedEvent();
+      remote_stream_2.onremovetrack = function() {
+        eventOccured();
+      }
+      // When all the above events have occurred- the test pass.
+      setAllEventsOccuredHandler(function() { document.title = 'OK'; });
+
+      local_stream.addTrack(gLocalStream.getAudioTracks()[0]);
+      local_stream.removeTrack(local_stream.getVideoTracks()[0]);
+      negotiate();
+    });  // End of setAllEventsOccuredHandler.
+  }
+
+  // This function is used for setting up a test that:
+  // 1. Creates a data channel on |gFirstConnection| and sends data to
+  //    |gSecondConnection|.
+  // 2. When data is received on |gSecondConnection| a message
+  //    is sent to |gFirstConnection|.
+  // 3. When data is received on |gFirstConnection|, the data
+  //    channel is closed. The test passes when the state transition completes.
+  function setupDataChannel(params) {
+    var sendDataString = "send some text on a data channel."
+    firstDataChannel = gFirstConnection.createDataChannel(
+        "sendDataChannel", params);
+    expectEquals('connecting', firstDataChannel.readyState);
+
+    // When |firstDataChannel| transition to open state, send a text string.
+    firstDataChannel.onopen = function() {
+      expectEquals('open', firstDataChannel.readyState);
+      firstDataChannel.send(sendDataString);
+    }
+
+    // When |firstDataChannel| receive a message, close the channel and
+    // initiate a new offer/answer exchange to complete the closure.
+    firstDataChannel.onmessage = function(event) {
+      expectEquals(event.data, sendDataString);
+      firstDataChannel.close();
+      negotiate();
+    }
+
+    // When |firstDataChannel| transition to closed state, the test pass.
+    addExpectedEvent();
+    firstDataChannel.onclose = function() {
+      expectEquals('closed', firstDataChannel.readyState);
+      eventOccured();
+    }
+
+    // Event handler for when |gSecondConnection| receive a new dataChannel.
+    gSecondConnection.ondatachannel = function (event) {
+      var secondDataChannel = event.channel;
+
+      // When |secondDataChannel| receive a message, send a message back.
+      secondDataChannel.onmessage = function(event) {
+        expectEquals(event.data, sendDataString);
+        expectEquals('open', secondDataChannel.readyState);
+        secondDataChannel.send(sendDataString);
+      }
+    }
+  }
+
+  // SCTP data channel setup is slightly different then RTP based
+  // channels. Due to a bug in libjingle, we can't send data immediately
+  // after channel becomes open. So for that reason in SCTP,
+  // we are sending data from second channel, when ondatachannel event is
+  // received. So data flow happens 2 -> 1 -> 2.
+  function setupSctpDataChannel(params) {
+    var sendDataString = "send some text on a data channel."
+    firstDataChannel = gFirstConnection.createDataChannel(
+        "sendDataChannel", params);
+    expectEquals('connecting', firstDataChannel.readyState);
+
+    // When |firstDataChannel| transition to open state, send a text string.
+    firstDataChannel.onopen = function() {
+      expectEquals('open', firstDataChannel.readyState);
+    }
+
+    // When |firstDataChannel| receive a message, send message back.
+    // initiate a new offer/answer exchange to complete the closure.
+    firstDataChannel.onmessage = function(event) {
+      expectEquals('open', firstDataChannel.readyState);
+      expectEquals(event.data, sendDataString);
+      firstDataChannel.send(sendDataString);
+    }
+
+
+    // Event handler for when |gSecondConnection| receive a new dataChannel.
+    gSecondConnection.ondatachannel = function (event) {
+      var secondDataChannel = event.channel;
+      secondDataChannel.onopen = function() {
+        secondDataChannel.send(sendDataString);
+      }
+
+      // When |secondDataChannel| receive a message, close the channel and
+      // initiate a new offer/answer exchange to complete the closure.
+      secondDataChannel.onmessage = function(event) {
+        expectEquals(event.data, sendDataString);
+        expectEquals('open', secondDataChannel.readyState);
+        secondDataChannel.close();
+        negotiate();
+      }
+
+      // When |secondDataChannel| transition to closed state, the test pass.
+      addExpectedEvent();
+      secondDataChannel.onclose = function() {
+        expectEquals('closed', secondDataChannel.readyState);
+        eventOccured();
+      }
+    }
+  }
+
+  // Test call with a stream that has been created by getUserMedia, clone
+  // the stream to a cloned stream, send them via the same peer connection.
+  function addTwoMediaStreamsToOneConnection() {
+    createConnections(null);
+    navigator.webkitGetUserMedia({audio: true, video: true},
+        CloneStreamAndAddTwoStreamstoOneConnection, printGetUserMediaError);
+  }
+
+  function onToneChange(tone) {
+    gSentTones += tone.tone;
+    document.title = gSentTones;
+  }
+
+  function createConnections(constraints) {
+    gFirstConnection = createConnection(constraints, 'remote-view-1');
+    expectEquals('stable', gFirstConnection.signalingState);
+
+    gSecondConnection = createConnection(constraints, 'remote-view-2');
+    expectEquals('stable', gSecondConnection.signalingState);
+  }
+
+  function createConnection(constraints, remoteView) {
+    var pc = new webkitRTCPeerConnection(null, constraints);
+    pc.onaddstream = function(event) {
+      onRemoteStream(event, remoteView);
+    }
+    return pc;
+  }
+
+  function displayAndRemember(localStream) {
+    var localStreamUrl = webkitURL.createObjectURL(localStream);
+    $('local-view').src = localStreamUrl;
+
+    gLocalStream = localStream;
+  }
+
+  // Called if getUserMedia fails.
+  function printGetUserMediaError(error) {
+    document.title = 'getUserMedia request failed:';
+    if (error.constraintName)
+      document.title += ' could not satisfy constraint ' + error.constraintName;
+    else
+      document.title += ' devices not working/user denied access.';
+    console.log(document.title);
+  }
+
+  // Called if getUserMedia succeeds and we want to send from both connections.
+  function addStreamToBothConnectionsAndNegotiate(localStream) {
+    displayAndRemember(localStream);
+    gFirstConnection.addStream(localStream);
+    gSecondConnection.addStream(localStream);
+    negotiate();
+  }
+
+  // Called if getUserMedia succeeds when we want to send from one connection.
+  function addStreamToTheFirstConnectionAndNegotiate(localStream) {
+    displayAndRemember(localStream);
+    gFirstConnection.addStream(localStream);
+    negotiate();
+  }
+
+  function verifyHasOneAudioAndVideoTrack(stream) {
+    expectEquals(1, stream.getAudioTracks().length);
+    expectEquals(1, stream.getVideoTracks().length);
+  }
+
+  // Called if getUserMedia succeeds, then clone the stream, send two streams
+  // from one peer connection.
+  function CloneStreamAndAddTwoStreamstoOneConnection(localStream) {
+    displayAndRemember(localStream);
+
+    var clonedStream = null;
+    if (typeof localStream.clone === "function") {
+      clonedStream = localStream.clone();
+    } else {
+      clonedStream = new webkitMediaStream(localStream);
+    }
+
+    gFirstConnection.addStream(localStream);
+    gFirstConnection.addStream(clonedStream);
+
+    // Verify the local streams are correct.
+    expectEquals(2, gFirstConnection.getLocalStreams().length);
+    verifyHasOneAudioAndVideoTrack(gFirstConnection.getLocalStreams()[0]);
+    verifyHasOneAudioAndVideoTrack(gFirstConnection.getLocalStreams()[1]);
+
+    // The remote side should receive two streams. After that, verify the
+    // remote side has the correct number of streams and tracks.
+    addExpectedEvent();
+    addExpectedEvent();
+    gSecondConnection.onaddstream = function(event) {
+      eventOccured();
+    }
+    setAllEventsOccuredHandler(function() {
+      // Negotiation complete, verify remote streams on the receiving side.
+      expectEquals(2, gSecondConnection.getRemoteStreams().length);
+      verifyHasOneAudioAndVideoTrack(gSecondConnection.getRemoteStreams()[0]);
+      verifyHasOneAudioAndVideoTrack(gSecondConnection.getRemoteStreams()[1]);
+
+      document.title = "OK";
+    });
+
+    negotiate();
+  }
+
+  // Called if getUserMedia succeeds when we want to send a modified
+  // MediaStream. A new MediaStream is created and the video track from
+  // |localStream| is added.
+  function createNewVideoStreamAndAddToBothConnections(localStream) {
+    displayAndRemember(localStream);
+    var new_stream = new webkitMediaStream();
+    new_stream.addTrack(localStream.getVideoTracks()[0]);
+    gFirstConnection.addStream(new_stream);
+    gSecondConnection.addStream(new_stream);
+    negotiate();
+  }
+
+  function negotiate() {
+    negotiateBetween(gFirstConnection, gSecondConnection);
+  }
+
+  function negotiateBetween(caller, callee) {
+    // Not stable = negotiation is ongoing. The behavior of re-negotiating while
+    // a negotiation is ongoing is more or less undefined, so avoid this.
+    if (caller.signalingState != 'stable')
+      throw 'You can only negotiate when the connection is stable!';
+
+    connectOnIceCandidate(caller, callee);
+
+    caller.createOffer(
+        function (offer) {
+          onOfferCreated(offer, caller, callee);
+        });
+  }
+
+  function onOfferCreated(offer, caller, callee) {
+    offer.sdp = transformSdp(offer.sdp);
+    caller.setLocalDescription(offer, function() {
+      expectEquals('have-local-offer', caller.signalingState);
+      receiveOffer(offer.sdp, caller, callee);
+    }, onLocalDescriptionError);
+  }
+
+  function receiveOffer(offerSdp, caller, callee) {
+    offerSdp = transformRemoteSdp(offerSdp);
+
+    var parsedOffer = new RTCSessionDescription({ type: 'offer',
+                                                  sdp: offerSdp });
+    callee.setRemoteDescription(parsedOffer);
+    callee.createAnswer(function (answer) {
+                          onAnswerCreated(answer, caller, callee);
+                        });
+    expectEquals('have-remote-offer', callee.signalingState);
+  }
+
+  function removeMsid(offerSdp) {
+    offerSdp = offerSdp.replace(/a=msid-semantic.*\r\n/g, '');
+    offerSdp = offerSdp.replace('a=mid:audio\r\n', '');
+    offerSdp = offerSdp.replace('a=mid:video\r\n', '');
+    offerSdp = offerSdp.replace(/a=ssrc.*\r\n/g, '');
+    return offerSdp;
+  }
+
+  function removeVideoCodec(offerSdp) {
+    offerSdp = offerSdp.replace('a=rtpmap:100 VP8/90000\r\n',
+                                'a=rtpmap:100 XVP8/90000\r\n');
+    return offerSdp;
+  }
+
+  function removeCrypto(offerSdp) {
+    offerSdp = offerSdp.replace(/a=crypto.*\r\n/g, 'a=Xcrypto\r\n');
+    offerSdp = offerSdp.replace(/a=fingerprint.*\r\n/g, '');
+    return offerSdp;
+  }
+
+  function removeBundle(sdp) {
+    return sdp.replace(/a=group:BUNDLE .*\r\n/g, '');
+  }
+
+  function useGice(sdp) {
+    sdp = sdp.replace(/t=.*\r\n/g, function(subString) {
+      return subString + 'a=ice-options:google-ice\r\n';
+    });
+    sdp = sdp.replace(/a=ice-ufrag:.*\r\n/g,
+                      'a=ice-ufrag:' + EXTERNAL_GICE_UFRAG + '\r\n');
+    sdp = sdp.replace(/a=ice-pwd:.*\r\n/g,
+                      'a=ice-pwd:' + EXTERNAL_GICE_PWD + '\r\n');
+    return sdp;
+  }
+
+  function useExternalSdes(sdp) {
+    // Remove current crypto specification.
+    sdp = sdp.replace(/a=crypto.*\r\n/g, '');
+    sdp = sdp.replace(/a=fingerprint.*\r\n/g, '');
+    // Add external crypto.  This is not compatible with |removeMsid|.
+    sdp = sdp.replace(/a=mid:(\w+)\r\n/g, function(subString, group) {
+      return subString + EXTERNAL_SDES_LINES[group] + '\r\n';
+    });
+    return sdp;
+  }
+
+  function onAnswerCreated(answer, caller, callee) {
+    answer.sdp = transformSdp(answer.sdp);
+    callee.setLocalDescription(answer);
+    expectEquals('stable', callee.signalingState);
+    receiveAnswer(answer.sdp, caller);
+  }
+
+  function receiveAnswer(answerSdp, caller) {
+    answerSdp = transformRemoteSdp(answerSdp);
+    var parsedAnswer = new RTCSessionDescription({ type: 'answer',
+                                                   sdp: answerSdp });
+    caller.setRemoteDescription(parsedAnswer);
+    expectEquals('stable', caller.signalingState);
+  }
+
+  function connectOnIceCandidate(caller, callee) {
+    caller.onicecandidate = function(event) { onIceCandidate(event, callee); }
+    callee.onicecandidate = function(event) { onIceCandidate(event, caller); }
+  }
+
+  function addGiceCredsToCandidate(candidate) {
+    return candidate.trimRight() +
+        ' username ' + EXTERNAL_GICE_UFRAG + ' password ' + EXTERNAL_GICE_PWD;
+  }
+
+  function onIceCandidate(event, target) {
+    if (event.candidate) {
+      var candidate = new RTCIceCandidate(event.candidate);
+      candidate.candidate = transformCandidate(candidate.candidate);
+      target.addIceCandidate(candidate);
+    }
+  }
+
+  function onRemoteStream(e, target) {
+    if (gTestWithoutMsid && e.stream.id != "default") {
+      document.title = 'a default remote stream was expected but instead ' +
+          e.stream.id + ' was received.';
+      return;
+    }
+    gRemoteStreams[target] = e.stream;
+    var remoteStreamUrl = webkitURL.createObjectURL(e.stream);
+    var remoteVideo = $(target);
+    remoteVideo.src = remoteStreamUrl;
+  }
+
+  </script>
+</head>
+<body>
+  <table border="0">
+    <tr>
+      <td>Local Preview</td>
+      <td>Remote Stream for Connection 1</td>
+      <td>Remote Stream for Connection 2</td>
+      <td>Remote Stream for Connection 3</td>
+      <td>Remote Stream for Connection 4</td>
+    </tr>
+    <tr>
+      <td><video width="320" height="240" id="local-view"
+          autoplay="autoplay"></video></td>
+      <td><video width="320" height="240" id="remote-view-1"
+          autoplay="autoplay"></video></td>
+      <td><video width="320" height="240" id="remote-view-2"
+          autoplay="autoplay"></video></td>
+      <td><video width="320" height="240" id="remote-view-3"
+          autoplay="autoplay"></video></td>
+      <td><video width="320" height="240" id="remote-view-4"
+          autoplay="autoplay"></video></td>
+      <!-- Canvases are named after their corresponding video elements. -->
+      <td><canvas width="320" height="240" id="remote-view-1-canvas"
+          style="display:none"></canvas></td>
+      <td><canvas width="320" height="240" id="remote-view-2-canvas"
+          style="display:none"></canvas></td>
+      <td><canvas width="320" height="240" id="remote-view-3-canvas"
+          style="display:none"></canvas></td>
+      <td><canvas width="320" height="240" id="remote-view-4-canvas"
+          style="display:none"></canvas></td>
+    </tr>
+  </table>
+</body>
+</html>
