@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+  <groupId>com.android.tools</groupId>
+  <artifactId>common</artifactId>
+  <version>22.2.0</version>
+  <versioning>
+    <versions>
+      <version>22.2.0</version>
+    </versions>
+    <lastUpdated>20130913022953</lastUpdated>
+  </versioning>
+</metadata>
